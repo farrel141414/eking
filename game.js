@@ -1,4 +1,4 @@
- let player, playerImg;
+let player, playerImg;
 let jumpButton, leftButton, rightButton;
 let gravity = 1;
 let moveLeft = false;
@@ -6,13 +6,15 @@ let moveRight = false;
 let speed;
 let platforms = [];
 let platformSpeed = 2;
-let platformCount = 21; // Mengubah jumlah platform menjadi 21
+let platformCount = 21;
 let unit;
 let cameraOffsetY = 0;
 let lastSpikeToggleTime = 0;
-let spikeInterval = 2000; // 2 detik
-let popup, popupButton;  // Variabel untuk pop-up
-let isPaused = false;  // Variabel untuk kontrol pause
+let spikeInterval = 2000;
+let popup, popupButton;
+let isPaused = false;
+
+let particles = []; // Array untuk menyimpan partikel
 
 function preload() {
   playerImg = loadImage("ekin.png");
@@ -39,7 +41,6 @@ function setupGame() {
   cameraOffsetY = 0;
   platforms = [];
 
-  // Membuat 20 platform sebelumnya
   for (let i = 0; i < platformCount - 1; i++) {
     platforms.push({
       x: random(unit * 2, width - unit * 4),
@@ -53,50 +54,62 @@ function setupGame() {
     });
   }
 
-  // Menambahkan platform ke-21 yang mengisi seluruh layar
   let lastPlatform = platforms[platforms.length - 1];
-  let platform21Y = lastPlatform.y - unit * 4; // Platform ke-21 berada di atas platform ke-20
+  let platform21Y = lastPlatform.y - unit * 4;
 
   platforms.push({
     x: 0,
-    y: platform21Y, // Platform ke-21 berada tepat setelah platform ke-20
-    w: width,  // Platform mengisi seluruh lebar layar
-    h: unit,  // Tinggi platform
-    isMoving: false,  // Platform ini tidak bergerak
-    hasSpike: false,  // Platform ke-21 tidak ada durinya
+    y: platform21Y,
+    w: width,
+    h: unit,
+    isMoving: false,
+    hasSpike: false,
     spikeVisible: false
   });
 
-  // Tombol dengan ukuran lebih besar dan menggunakan panah ke atas
   jumpButton = createButton("↑");
-  jumpButton.size(unit * 4, unit * 3);  // Ukuran tombol diperbesar
-  jumpButton.position(width - unit * 4.5, height - unit * 4.5);  // Menyesuaikan posisi
+  jumpButton.size(unit * 4, unit * 3);
+  jumpButton.position(width - unit * 4.5, height - unit * 4.5);
   jumpButton.touchStarted(() => {
     if (!player.isJumping && !isPaused) {
       player.ySpeed = player.jumpStrength;
       player.isJumping = true;
+      createParticles(); // Membuat partikel saat lompat
     }
   });
 
   leftButton = createButton("◀");
-  leftButton.size(unit * 3, unit * 3);  // Ukuran tombol diperbesar
-  leftButton.position(unit * 0.5, height - unit * 4.5);  // Menyesuaikan posisi
+  leftButton.size(unit * 3, unit * 3);
+  leftButton.position(unit * 0.5, height - unit * 4.5);
   leftButton.touchStarted(() => moveLeft = true);
   leftButton.touchEnded(() => moveLeft = false);
 
   rightButton = createButton("▶");
-  rightButton.size(unit * 3, unit * 3);  // Ukuran tombol diperbesar
-  rightButton.position(unit * 4, height - unit * 4.5);  // Menyesuaikan posisi
+  rightButton.size(unit * 3, unit * 3);
+  rightButton.position(unit * 4, height - unit * 4.5);
   rightButton.touchStarted(() => moveRight = true);
   rightButton.touchEnded(() => moveRight = false);
 }
 
+function createParticles() {
+  for (let i = 0; i < 10; i++) { // Buat beberapa partikel
+    let p = {
+      x: player.x + player.w / 2,  // Posisi partikel mengikuti karakter
+      y: player.y + player.h / 2,
+      size: random(3, 6),  // Ukuran kecil untuk bintang
+      speedX: random(-1, 1),
+      speedY: random(-3, -1), // Gerakan partikel ke atas
+      life: 255 // Keberadaan partikel (opacity)
+    };
+    particles.push(p); // Menambahkan partikel ke array
+  }
+}
+
 function draw() {
-  if (isPaused) return;  // Hentikan game jika dalam keadaan pause
+  if (isPaused) return;
 
   background(92, 148, 252);
 
-  // Update duri tiap 2 detik
   if (millis() - lastSpikeToggleTime > spikeInterval) {
     for (let pf of platforms) {
       if (pf.hasSpike) {
@@ -106,12 +119,10 @@ function draw() {
     lastSpikeToggleTime = millis();
   }
 
-  // Gerakan horizontal
   if (moveLeft) player.x -= speed;
   if (moveRight) player.x += speed;
   player.x = constrain(player.x, 0, width - player.w);
 
-  // Fisika vertikal
   player.y += player.ySpeed;
   player.ySpeed += gravity;
 
@@ -125,10 +136,17 @@ function draw() {
 
     if (hit) {
       player.y = pf.y - player.h;
-      player.ySpeed = 0; // Reset kecepatan vertikal saat mendarat
+      player.ySpeed = 0;
       onPlatform = true;
+
+      // Karakter hanya ikut bergerak kalau platform bergerak dan bukan lantai dasar
+      if (pf.isMoving && pf.y < height - unit) {
+        player.x += platformSpeed * pf.moveDir;
+        player.x = constrain(player.x, 0, width - player.w);
+      }
     }
 
+    // Gerakan platform yang bergerak
     if (pf.isMoving) {
       pf.x += platformSpeed * pf.moveDir;
       if (pf.x <= 0 || pf.x + pf.w >= width) {
@@ -136,7 +154,7 @@ function draw() {
       }
     }
 
-    // Cek tabrakan dengan duri
+    // Deteksi spike
     if (pf.hasSpike && pf.spikeVisible) {
       let spikeX = pf.x + pf.w / 2 - unit / 2;
       let spikeY = pf.y - unit;
@@ -147,62 +165,78 @@ function draw() {
                      player.y < spikeY + unit;
 
       if (hitSpike) {
-        showPopup();  // Menampilkan pop-up
+        showPopup();
         return;
       }
     }
   }
 
-  // Jika karakter jatuh ke bawah layar dan tidak ada platform, restart
+  // Pastikan karakter tidak bergerak jika di lantai dasar
   if (player.y >= cameraOffsetY + height - player.h) {
-    player.y = cameraOffsetY + height - player.h; // Agar karakter tidak melewati batas
-    player.ySpeed = 0; // Hentikan kecepatan jatuh
+    player.y = cameraOffsetY + height - player.h;
+    player.ySpeed = 0;
     onPlatform = true;
   }
 
   player.isJumping = !onPlatform;
 
-  // Kamera mengikuti pemain
   let cameraTargetY = player.y - height / 3;
   if (cameraTargetY < cameraOffsetY) {
     cameraOffsetY = cameraTargetY;
   }
 
-  // Gambar semua dengan translate kamera
   push();
   translate(0, -cameraOffsetY);
 
-  // Lantai
   fill(100);
   rect(0, cameraOffsetY + height - 10, width, 10);
 
-  // Platform & duri
   fill(160, 82, 45);
   for (let pf of platforms) {
     rect(pf.x, pf.y, pf.w, pf.h);
 
     if (pf.hasSpike && pf.spikeVisible) {
-      fill(255); // duri putih
+      fill(255);
       triangle(
-        pf.x + pf.w / 2 - unit / 2, pf.y,             // kiri bawah
-        pf.x + pf.w / 2 + unit / 2, pf.y,             // kanan bawah
-        pf.x + pf.w / 2, pf.y - unit                  // ujung atas (tajam)
+        pf.x + pf.w / 2 - unit / 2, pf.y,
+        pf.x + pf.w / 2 + unit / 2, pf.y,
+        pf.x + pf.w / 2, pf.y - unit
       );
-      fill(160, 82, 45); // reset warna platform
+      fill(160, 82, 45);
     }
   }
 
-  // Gambar karakter
   let imgAspect = playerImg.height / playerImg.width;
   let imgW = player.w;
   let imgH = player.w * imgAspect;
   image(playerImg, player.x, player.y - (imgH - player.h), imgW, imgH);
 
+  // Gambar dan perbarui partikel
+  drawParticles();
+
   pop();
 }
 
+function drawParticles() {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    let p = particles[i];
+    p.x += p.speedX;
+    p.y += p.speedY;
+    p.life -= 5; // Mengurangi opacity
+
+    fill(255, 255, 0, p.life); // Warna kuning dan memudar
+    noStroke();
+
+    // Gambar bintang seperti di langit (lingkaran kecil)
+    ellipse(p.x, p.y, p.size);
+
+    if (p.life <= 0) {
+      particles.splice(i, 1); // Menghapus partikel setelah mati
+    }
+  }
+}
+
 function showPopup() {
-  // Membuat pop-up dengan pesan dan tombol "Oke"
   popup = createDiv("Noo Ekin kena duri dan harus mulai dari awal😭");
   popup.style('font-size', '24px');
   popup.style('color', 'red');
@@ -212,29 +246,25 @@ function showPopup() {
   popup.style('border-radius', '10px');
   popup.style('box-shadow', '0px 4px 10px rgba(0, 0, 0, 0.2)');
   popup.position(width / 2 - 200, height / 2 - 100);
-
-  // Menggunakan font yang lebih modern dan sedikit tebal
   popup.style('font-family', '"Roboto", sans-serif');
-  popup.style('font-weight', '600');  // Menambah ketebalan font
+  popup.style('font-weight', '600');
 
-  // Membuat tombol Oke
   popupButton = createButton("Mulai Dari Awal😹");
   popupButton.size(100, 40);
   popupButton.position(width / 2 - 50, height / 2 + 30);
   popupButton.mousePressed(() => {
-    popup.remove();  // Menghapus pop-up
-    popupButton.remove();  // Menghapus tombol "Oke"
-    restartGame();  // Memulai ulang permainan
-    isPaused = false;  // Melanjutkan game setelah tombol "Oke"
+    popup.remove();
+    popupButton.remove();
+    restartGame();
+    isPaused = false;
   });
 
-  isPaused = true;  // Pause game saat pop-up muncul
+  isPaused = true;
 }
 
 function restartGame() {
-  // Hapus tombol lama biar tidak dobel
   jumpButton.remove();
   leftButton.remove();
   rightButton.remove();
   setupGame();
-}
+   }
